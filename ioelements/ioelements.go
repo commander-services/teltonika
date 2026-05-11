@@ -115,7 +115,7 @@ func (r *Decoder) DecodeByDefinition(def *IOElementDefinition, buffer []byte) (*
 
 	size := len(buffer)
 	if size == 1 && def.Min == 0 && def.Max == 1 && def.Type == IOElementUnsigned {
-		res = buffer[0] == 1
+		res = int8(buffer[0])
 	} else if (size == 1 || size == 2 || size == 4 || size == 8) && (def.Type == IOElementUnsigned || def.Type == IOElementSigned) {
 		if def.Type == IOElementUnsigned {
 			var v uint64
