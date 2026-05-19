@@ -44,9 +44,22 @@ type IOElement struct {
 type Decoder struct {
 	definitions     []IOElementDefinition
 	supportedModels map[string]bool
+	multiply        bool
 }
 
-var defaultDecoder = &Decoder{ioElementDefinitions, supportedModels}
+type Option func(*Decoder)
+
+func WithMultiply(multiply bool) Option {
+	return func(d *Decoder) {
+		d.multiply = multiply
+	}
+}
+
+var defaultDecoder = &Decoder{
+	definitions:     ioElementDefinitions,
+	supportedModels: supportedModels,
+	multiply:        true,
+}
 
 func (r *IOElement) String() string {
 	switch r.Value.(type) {
@@ -65,12 +78,25 @@ func NewDecoder(definitions []IOElementDefinition) *Decoder {
 			allSupportedModels[model] = true
 		}
 	}
-	return &Decoder{definitions, allSupportedModels}
+	return &Decoder{
+		definitions:     definitions,
+		supportedModels: allSupportedModels,
+		multiply:        true,
+	}
 }
 
 // DefaultDecoder returns a decoder with I/O Element definitions represented in `ioelements_dump.go` file
-func DefaultDecoder() *Decoder {
-	return defaultDecoder
+func DefaultDecoder(options ...Option) *Decoder {
+	if len(options) == 0 {
+		return defaultDecoder
+	}
+
+	decoder := *defaultDecoder
+	for _, option := range options {
+		option(&decoder)
+	}
+
+	return &decoder
 }
 
 // GetElementInfo returns full description of I/O Element by its id and model name
@@ -128,7 +154,7 @@ func (r *Decoder) DecodeByDefinition(def *IOElementDefinition, buffer []byte) (*
 			} else {
 				v = binary.BigEndian.Uint64(buffer)
 			}
-			if def.Multiplier != 1.0 {
+			if r.multiply && def.Multiplier != 1.0 {
 				res = float64(v) * def.Multiplier
 			} else {
 				res = v
@@ -144,7 +170,7 @@ func (r *Decoder) DecodeByDefinition(def *IOElementDefinition, buffer []byte) (*
 			} else {
 				v = int64(binary.BigEndian.Uint64(buffer))
 			}
-			if def.Multiplier != 1.0 {
+			if r.multiply && def.Multiplier != 1.0 {
 				res = float64(v) * def.Multiplier
 			} else {
 				res = v
