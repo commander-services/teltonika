@@ -9,7 +9,7 @@ type FallbackIOValueError struct {
 }
 
 func (e FallbackIOValueError) Error() string {
-	return fmt.Sprintf("decode io element for model %q avl id %d", e.Model, e.AvlId)
+	return fmt.Sprintf("unsupported io element for model %q avl id %d", e.Model, e.AvlId)
 }
 
 func (e FallbackIOValueError) Unwrap() error {
