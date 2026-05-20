@@ -44,9 +44,22 @@ type IOElement struct {
 type Decoder struct {
 	definitions     []IOElementDefinition
 	supportedModels map[string]bool
+	multiply        bool
 }
 
-var defaultDecoder = &Decoder{ioElementDefinitions, supportedModels}
+type Option func(*Decoder)
+
+func WithMultiply(multiply bool) Option {
+	return func(d *Decoder) {
+		d.multiply = multiply
+	}
+}
+
+var defaultDecoder = &Decoder{
+	definitions:     ioElementDefinitions,
+	supportedModels: supportedModels,
+	multiply:        true,
+}
 
 func (r *IOElement) String() string {
 	switch r.Value.(type) {
@@ -65,12 +78,25 @@ func NewDecoder(definitions []IOElementDefinition) *Decoder {
 			allSupportedModels[model] = true
 		}
 	}
-	return &Decoder{definitions, allSupportedModels}
+	return &Decoder{
+		definitions:     definitions,
+		supportedModels: allSupportedModels,
+		multiply:        true,
+	}
 }
 
 // DefaultDecoder returns a decoder with I/O Element definitions represented in `ioelements_dump.go` file
-func DefaultDecoder() *Decoder {
-	return defaultDecoder
+func DefaultDecoder(options ...Option) *Decoder {
+	if len(options) == 0 {
+		return defaultDecoder
+	}
+
+	decoder := *defaultDecoder
+	for _, option := range options {
+		option(&decoder)
+	}
+
+	return &decoder
 }
 
 // GetElementInfo returns full description of I/O Element by its id and model name
@@ -79,6 +105,8 @@ func (r *Decoder) GetElementInfo(modelName string, id uint16) (*IOElementDefinit
 	if modelName != "*" && !r.supportedModels[modelName] {
 		return nil, fmt.Errorf("model '%s' is not supported", modelName)
 	}
+
+	var defaultIODEfs *IOElementDefinition = nil
 
 	for _, e := range r.definitions {
 		if e.Id != id {
@@ -94,9 +122,16 @@ func (r *Decoder) GetElementInfo(modelName string, id uint16) (*IOElementDefinit
 			}
 			return &e, nil
 		}
+		if defaultIODEfs == nil {
+			defaultIODEfs = &e
+		}
 	}
 
-	return nil, fmt.Errorf("element with id %v not found", id)
+	if defaultIODEfs != nil {
+		return defaultIODEfs, fmt.Errorf("element with id %v is unsupported for model: %s", id, modelName)
+	}
+
+	return &IOElementDefinition{Id: id, Type: IOElementUnsigned, Multiplier: 1.0}, fmt.Errorf("element with id %v is not defined", id)
 }
 
 // Decode decodes an I/O Element by model name and id (result can be represented in numan-readable format)
@@ -104,6 +139,17 @@ func (r *Decoder) GetElementInfo(modelName string, id uint16) (*IOElementDefinit
 func (r *Decoder) Decode(modelName string, id uint16, buffer []byte) (*IOElement, error) {
 	def, err := r.GetElementInfo(modelName, id)
 	if err != nil {
+		if def != nil {
+			decoded, decodeErr := r.DecodeByDefinition(def, buffer)
+			if decodeErr != nil {
+				return nil, decodeErr
+			}
+			return decoded, FallbackIOValueError{
+				Model: modelName,
+				AvlId: id,
+				Err:   err,
+			}
+		}
 		return nil, err
 	}
 	return r.DecodeByDefinition(def, buffer)
@@ -128,7 +174,7 @@ func (r *Decoder) DecodeByDefinition(def *IOElementDefinition, buffer []byte) (*
 			} else {
 				v = binary.BigEndian.Uint64(buffer)
 			}
-			if def.Multiplier != 1.0 {
+			if r.multiply && def.Multiplier != 1.0 {
 				res = float64(v) * def.Multiplier
 			} else {
 				res = v
@@ -144,7 +190,7 @@ func (r *Decoder) DecodeByDefinition(def *IOElementDefinition, buffer []byte) (*
 			} else {
 				v = int64(binary.BigEndian.Uint64(buffer))
 			}
-			if def.Multiplier != 1.0 {
+			if r.multiply && def.Multiplier != 1.0 {
 				res = float64(v) * def.Multiplier
 			} else {
 				res = v
