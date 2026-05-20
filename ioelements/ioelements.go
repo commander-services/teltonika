@@ -106,6 +106,8 @@ func (r *Decoder) GetElementInfo(modelName string, id uint16) (*IOElementDefinit
 		return nil, fmt.Errorf("model '%s' is not supported", modelName)
 	}
 
+	var defaultIODEfs *IOElementDefinition = nil
+
 	for _, e := range r.definitions {
 		if e.Id != id {
 			continue
@@ -120,9 +122,16 @@ func (r *Decoder) GetElementInfo(modelName string, id uint16) (*IOElementDefinit
 			}
 			return &e, nil
 		}
+		if defaultIODEfs == nil {
+			defaultIODEfs = &e
+		}
 	}
 
-	return nil, fmt.Errorf("element with id %v not found", id)
+	if defaultIODEfs != nil {
+		return defaultIODEfs, fmt.Errorf("element with id %v is unsupported for model: %s", id, modelName)
+	}
+
+	return &IOElementDefinition{Id: id, Type: IOElementUnsigned, Multiplier: 1.0}, fmt.Errorf("element with id %v is not defined", id)
 }
 
 // Decode decodes an I/O Element by model name and id (result can be represented in numan-readable format)
@@ -130,6 +139,17 @@ func (r *Decoder) GetElementInfo(modelName string, id uint16) (*IOElementDefinit
 func (r *Decoder) Decode(modelName string, id uint16, buffer []byte) (*IOElement, error) {
 	def, err := r.GetElementInfo(modelName, id)
 	if err != nil {
+		if def != nil {
+			decoded, decodeErr := r.DecodeByDefinition(def, buffer)
+			if decodeErr != nil {
+				return nil, decodeErr
+			}
+			return decoded, FallbackIOValueError{
+				Model: modelName,
+				AvlId: id,
+				Err:   err,
+			}
+		}
 		return nil, err
 	}
 	return r.DecodeByDefinition(def, buffer)
